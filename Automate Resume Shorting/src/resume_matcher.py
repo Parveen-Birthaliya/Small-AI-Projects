@@ -1,47 +1,67 @@
-#!/usr/bin/env python3
-"""
-resume_matcher.py
------------------
-A simple script to rank resumes against a job description using sentence-transformers.
-"""
+# --- Step 1: Install dependencies ---
+!pip install -q sentence-transformers torch PyPDF2
 
-import argparse
-import logging
-from typing import List
+# --- Step 2: Import libraries ---
 from sentence_transformers import SentenceTransformer, util
+from PyPDF2 import PdfReader
+from google.colab import files
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+# --- Step 3: Upload PDF resumes (optional) ---
+print("Upload your PDF resumes. If you skip, you can provide your resume text instead.")
+uploaded_files = files.upload()
+pdf_paths = list(uploaded_files.keys())
+resumes_text = []
 
-def load_model(model_name: str = "all-MiniLM-L6-v2") -> SentenceTransformer:
-    """Load the transformer model for embeddings."""
-    logging.info(f"Loading model: {model_name}")
-    return SentenceTransformer(model_name)
+def extract_text_from_pdf(pdf_path):
+    reader = PdfReader(pdf_path)
+    text = ""
+    for page in reader.pages:
+        text += page.extract_text() or ""
+    return text.strip()
 
-def compute_similarity(model: SentenceTransformer, job_desc: str, resumes: List[str]) -> List[tuple]:
-    """Compute cosine similarity between job description and resumes."""
-    job_embedding = model.encode(job_desc, convert_to_tensor=True)
-    resume_embeddings = model.encode(resumes, convert_to_tensor=True)
-    cosine_scores = util.pytorch_cos_sim(job_embedding, resume_embeddings)
-    return [(resumes[i], float(score)) for i, score in enumerate(cosine_scores[0])]
+if pdf_paths:
+    for path in pdf_paths:
+        text = extract_text_from_pdf(path)
+        if not text:
+            print(f"Warning: No text found in {path}")
+            text = "Empty resume content."
+        resumes_text.append(text)
+else:
+    print("No PDF uploaded. You can provide your resume in plain text.")
+    resume_text = input("Enter your resume text (or leave empty to use default placeholder): ").strip()
+    if resume_text:
+        pdf_paths = ["Text_Resume"]
+        resumes_text = [resume_text]
+    else:
+        pdf_paths = ["Default_AI_Internship_Resume"]
+        resumes_text = ["This is a placeholder resume for AI internship."]
 
-def rank_resumes(results: List[tuple]) -> List[tuple]:
-    """Sort resumes by similarity score."""
+# --- Step 4: Load model ---
+model = SentenceTransformer("all-MiniLM-L6-v2")
+print("Model loaded.")
+
+# --- Step 5: Input Job Description ---
+job_desc = input("Enter the job description (press Enter to use default AI internship JD): ").strip()
+if not job_desc:
+    job_desc = "Looking for an AI/ML internship candidate skilled in Python, PyTorch, TensorFlow, and data analysis."
+    print("Using default AI internship job description.")
+
+# --- Step 6: Compute similarity ---
+def compute_similarity(job_desc, resumes_text):
+    job_emb = model.encode(job_desc, convert_to_tensor=True)
+    resume_embs = model.encode(resumes_text, convert_to_tensor=True)
+    scores = util.pytorch_cos_sim(job_emb, resume_embs)
+    return [(resumes_text[i], float(scores[0][i])) for i in range(len(resumes_text))]
+
+def rank_resumes(results):
     return sorted(results, key=lambda x: x[1], reverse=True)
 
-def main():
-    parser = argparse.ArgumentParser(description="Rank resumes by similarity to a job description.")
-    parser.add_argument("--job", type=str, required=True, help="Job description text")
-    parser.add_argument("--resumes", type=str, nargs="+", required=True, help="List of resumes")
-    args = parser.parse_args()
+results = compute_similarity(job_desc, resumes_text)
+ranked = rank_resumes(results)
 
-    model = load_model()
-    results = compute_similarity(model, args.job, args.resumes)
-    ranked = rank_resumes(results)
+# --- Step 7: Print ranked results ---
+print("\n--- Ranked Resumes ---")
+for i, (text, score) in enumerate(ranked, 1):
+    print(f"{i}. {pdf_paths[i-1]} -> Score: {score:.4f}")
 
-    print("\nRanking Results:")
-    for resume, score in ranked:
-        print(f"{resume} -> {score:.4f}")
 
-if __name__ == "__main__":
-    main()
