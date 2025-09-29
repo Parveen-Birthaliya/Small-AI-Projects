@@ -4,5 +4,5 @@ A simple tool to rank resumes against a job description using [Sentence Transfor
 
 ## Usage
 ```bash
-python src/resume_matcher.py --job "Looking for a Django developer" \
-    --resumes "Flask dev with Python" "Django backend expert" "React frontend dev"
+python src/resume_matcher.py
+```
